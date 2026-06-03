@@ -1,0 +1,22 @@
+# 민감 정보
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE / 툴
+.claude/
+.idea/
+.vscode/
+*.iml
+
+# 임시 파일
+draw_architecture.py
+=0.40.0
