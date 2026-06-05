@@ -16,7 +16,11 @@ from telegram.ext import (
 )
 
 import config
+from agents.baseball import BaseballAgent
+from agents.news import NewsAgent
 from agents.stock import StockAgent
+from agents.stock_analyze import StockAnalyzeAgent
+from agents.usage import UsageAgent
 from orchestrator import Orchestrator
 
 logging.basicConfig(
@@ -27,7 +31,11 @@ logger = logging.getLogger("bot")
 
 # --- 에이전트 등록 (새 에이전트는 여기에 한 줄씩 추가) ---
 orchestra = Orchestrator()
+orchestra.register(BaseballAgent())
+orchestra.register(NewsAgent())
 orchestra.register(StockAgent())
+orchestra.register(StockAnalyzeAgent())
+orchestra.register(UsageAgent())
 # orchestra.register(YoutubeAgent())
 # orchestra.register(LaptopAgent())
 

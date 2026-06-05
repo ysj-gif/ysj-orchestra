@@ -19,4 +19,6 @@ build/
 
 # 임시 파일
 draw_architecture.py
-=0.40.0
+
+# 런타임 데이터
+usage_log.json
