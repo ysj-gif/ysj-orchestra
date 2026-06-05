@@ -17,6 +17,7 @@ def _to_int(value, default: int = 0) -> int:
 TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ALLOWED_CHAT_ID: int = _to_int(os.getenv("ALLOWED_CHAT_ID"), 0)
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+CEREBRAS_API_KEY: str = os.getenv("CEREBRAS_API_KEY", "")
 
 if not TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN == "여기에_봇토큰":
     raise RuntimeError("TELEGRAM_BOT_TOKEN이 설정되지 않았습니다 (.env 확인)")

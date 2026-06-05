@@ -1,9 +1,9 @@
 """명령어 -> 에이전트 라우팅 + 에이전트 레지스트리.
 
 - command_dispatch : /stock 처럼 명령어가 명확할 때 직접 에이전트 호출
-- llm_dispatch     : 자유 텍스트 입력을 Claude로 의도 분류해 에이전트 호출
+- llm_dispatch     : 자유 텍스트 입력을 Cerebras(llama3.1-8b)로 의도 분류해 에이전트 호출
 """
-import anthropic
+import json
 
 import config
 import usage_tracker
@@ -25,7 +25,7 @@ _SYSTEM = (
 class Orchestrator:
     def __init__(self) -> None:
         self._agents: dict[str, Agent] = {}
-        self._client: anthropic.AsyncAnthropic | None = None
+        self._client = None
 
     def register(self, agent: Agent) -> None:
         if not agent.name:
@@ -40,61 +40,69 @@ class Orchestrator:
     def all(self) -> list[Agent]:
         return list(self._agents.values())
 
-    def _get_client(self) -> anthropic.AsyncAnthropic:
+    def _get_client(self):
         if self._client is None:
-            self._client = anthropic.AsyncAnthropic(api_key=config.ANTHROPIC_API_KEY)
+            from cerebras.cloud.sdk import AsyncCerebras
+            self._client = AsyncCerebras(api_key=config.CEREBRAS_API_KEY)
         return self._client
 
     def _tools(self) -> list[dict]:
+        """에이전트 목록을 OpenAI 호환 tool 정의로 변환."""
         return [
             {
-                "name": a.name,
-                "description": a.description,
-                "input_schema": a.input_schema,
+                "type": "function",
+                "function": {
+                    "name": a.name,
+                    "description": a.description,
+                    "parameters": a.input_schema,
+                },
             }
             for a in self._agents.values()
         ]
 
     async def llm_dispatch(self, text: str) -> str:
-        """사용자 자유 입력을 LLM으로 의도 분류해 적절한 에이전트에 위임."""
-        if not config.ANTHROPIC_API_KEY:
-            return "ANTHROPIC_API_KEY가 설정되지 않아 LLM 라우팅을 사용할 수 없습니다."
+        """사용자 자유 입력을 Cerebras LLM으로 의도 분류해 적절한 에이전트에 위임."""
+        if not config.CEREBRAS_API_KEY:
+            return "CEREBRAS_API_KEY가 설정되지 않아 LLM 라우팅을 사용할 수 없습니다."
 
-        _MODEL = "claude-haiku-4-5-20251001"
-        response = await self._get_client().messages.create(
-            model=_MODEL,
-            max_tokens=256,
-            system=[
-                {
-                    "type": "text",
-                    "text": _SYSTEM,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=self._tools(),
-            messages=[{"role": "user", "content": text}],
-        )
+        _MODEL = "llama3.1-8b"
+        try:
+            response = await self._get_client().chat.completions.create(
+                model=_MODEL,
+                max_tokens=256,
+                messages=[
+                    {"role": "system", "content": _SYSTEM},
+                    {"role": "user", "content": text},
+                ],
+                tools=self._tools(),
+                tool_choice="auto",
+            )
+        except Exception as e:
+            return f"라우팅 중 오류가 발생했습니다: {e}"
 
         u = response.usage
         usage_tracker.record(
             model=_MODEL,
-            input_tokens=u.input_tokens,
-            output_tokens=u.output_tokens,
-            cache_write=getattr(u, "cache_creation_input_tokens", 0) or 0,
-            cache_read=getattr(u, "cache_read_input_tokens", 0) or 0,
+            input_tokens=u.prompt_tokens,
+            output_tokens=u.completion_tokens,
+            cache_write=0,
+            cache_read=0,
             purpose="dispatch",
         )
 
-        for block in response.content:
-            if block.type == "tool_use":
-                agent = self.get(block.name)
+        message = response.choices[0].message
+
+        # 도구 호출이 있는 경우
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                agent = self.get(tool_call.function.name)
                 if agent:
-                    args = list(block.input.values())
+                    args_dict = json.loads(tool_call.function.arguments)
+                    args = list(args_dict.values())
                     return await agent.handle(args)
 
         # 도구 호출 없이 텍스트 응답만 온 경우
-        for block in response.content:
-            if hasattr(block, "text"):
-                return block.text
+        if message.content:
+            return message.content
 
         return "이해하지 못했습니다. /help 로 사용 가능한 명령을 확인하세요."
