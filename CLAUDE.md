@@ -55,7 +55,7 @@ Telegram message
 ### Key Modules
 
 - **`bot.py`** — Entry point. Registers `/start`, `/help`, and one `CommandHandler` per agent (`agent.name` becomes the command). Free text is routed to `orchestrator.llm_dispatch`. In setup mode (`ALLOWED_CHAT_ID=0`), ignores all routing and echoes the sender's chat ID.
-- **`orchestrator.py`** — Agent registry and LLM dispatcher. `llm_dispatch` calls Cerebras (`llama3.1-8b`) with all registered agents as OpenAI-compatible function-call tools; Cerebras picks the right one and extracts query args. Also records each dispatch call via `usage_tracker`.
+- **`orchestrator.py`** — Agent registry and LLM dispatcher. `llm_dispatch` calls Cerebras (`gpt-oss-120b`) with all registered agents as OpenAI-compatible function-call tools; Cerebras picks the right one and extracts query args. Also records each dispatch call via `usage_tracker`.
 - **`usage_tracker.py`** — Thread-safe module that appends every API call to `usage_log.json`. Call `usage_tracker.record(model, input_tokens, output_tokens, cache_write, cache_read, purpose)` immediately after any LLM API call. `get_stats()` returns today/total breakdowns with USD cost estimates. Cerebras calls pass `cache_write=0, cache_read=0`.
 - **`agents/base.py`** — Abstract `Agent` base class: `name` (str), `description` (str), `input_schema` (JSON Schema dict), and `async handle(args: list[str]) -> str`.
 - **`config.py`** — Loads `.env` and exposes `BOT_TOKEN`, `ALLOWED_CHAT_ID`, `ANTHROPIC_API_KEY`, `CEREBRAS_API_KEY`. Raises `RuntimeError` on missing bot token.

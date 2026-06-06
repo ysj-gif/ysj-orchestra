@@ -1,7 +1,7 @@
 """명령어 -> 에이전트 라우팅 + 에이전트 레지스트리.
 
 - command_dispatch : /stock 처럼 명령어가 명확할 때 직접 에이전트 호출
-- llm_dispatch     : 자유 텍스트 입력을 Cerebras(llama3.1-8b)로 의도 분류해 에이전트 호출
+- llm_dispatch     : 자유 텍스트 입력을 Cerebras(gpt-oss-120b)로 의도 분류해 에이전트 호출
 """
 import json
 
@@ -65,24 +65,37 @@ class Orchestrator:
         if not config.CEREBRAS_API_KEY:
             return "CEREBRAS_API_KEY가 설정되지 않아 LLM 라우팅을 사용할 수 없습니다."
 
-        _MODEL = "llama3.1-8b"
-        try:
-            response = await self._get_client().chat.completions.create(
-                model=_MODEL,
-                max_tokens=256,
-                messages=[
-                    {"role": "system", "content": _SYSTEM},
-                    {"role": "user", "content": text},
-                ],
-                tools=self._tools(),
-                tool_choice="auto",
-            )
-        except Exception as e:
-            return f"라우팅 중 오류가 발생했습니다: {e}"
+        # 앞 모델이 deprecated되면 다음 모델로 자동 전환
+        _MODELS = ["gpt-oss-120b", "zai-glm-4.7", "qwen-3-235b-a22b-instruct-2507"]
+
+        response = None
+        used_model = None
+        for model in _MODELS:
+            try:
+                response = await self._get_client().chat.completions.create(
+                    model=model,
+                    max_tokens=256,
+                    messages=[
+                        {"role": "system", "content": _SYSTEM},
+                        {"role": "user", "content": text},
+                    ],
+                    tools=self._tools(),
+                    tool_choice="auto",
+                )
+                used_model = model
+                break
+            except Exception as e:
+                err = str(e)
+                if "model_not_found" in err or "does not exist" in err:
+                    continue  # 다음 백업 모델 시도
+                return f"라우팅 중 오류가 발생했습니다: {e}"
+
+        if response is None:
+            return "사용 가능한 라우팅 모델이 없습니다. Cerebras 모델 목록을 확인해 주세요."
 
         u = response.usage
         usage_tracker.record(
-            model=_MODEL,
+            model=used_model,
             input_tokens=u.prompt_tokens,
             output_tokens=u.completion_tokens,
             cache_write=0,
